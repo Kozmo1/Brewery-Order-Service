@@ -10,7 +10,7 @@ const orderItemSchema = new Schema({
         required: true,
         min: 1,
     }, 
-    orderPrice: {
+    priceAtOrder: {
         type: Number,
         required: true,
         min: 0,

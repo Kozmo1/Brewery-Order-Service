@@ -5,7 +5,7 @@ interface OrderDocument extends Document {
     items: Array<{
         product: string;
         quantity: number;
-        orderPrice: number;
+        priceAtOrder: number;
     }>;
     totalPrice: number;
     status: string;

@@ -1,13 +1,14 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { body } from 'express-validator';
 import { OrderController } from '../../../controllers/orderController';
+import { verifyToken } from '../../../middleware/auth';
 
 const router = express.Router();
 const orderController = new OrderController();
 
 // Create an order
 router.post('/orders',
-    body('user').notEmpty().withMessage('User ID is required'),
+    verifyToken,
     body('items').isArray().withMessage('Items must be an array').custom(items => {
         if (items.length === 0) throw new Error('Order must have at least one item');
         return true;
@@ -20,25 +21,22 @@ router.post('/orders',
     (req: Request, res: Response, next: NextFunction) => orderController.createOrder(req, res, next)
 );
 
+
 // Get a specific order by ID
-router.get('/orders/:id', 
-    (req: Request, res: Response, next: NextFunction) => orderController.getOrderById(req, res, next)
+router.get('/orders/:id', verifyToken, (req: Request, res: Response, next: NextFunction) => orderController.getOrderById(req, res, next)
 );
 
 // Update an order's status or details
-router.put('/orders/:id',
-    body('status').optional().isIn(['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']).withMessage('Invalid status'),
+router.put('/orders/:id', verifyToken, body('status').optional().isIn(['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']).withMessage('Invalid status'),
     (req: Request, res: Response, next: NextFunction) => orderController.updateOrder(req, res, next)
 );
 
 // Delete an order (cancel order)
-router.delete('/orders/:id', 
-    (req: Request, res: Response, next: NextFunction) => orderController.cancelOrder(req, res, next)
+router.delete('/orders/:id', verifyToken, (req: Request, res: Response, next: NextFunction) => orderController.cancelOrder(req, res, next)
 );
 
 // Get all orders with optional filtering by user or status
-router.get('/orders', 
-    (req: Request, res: Response, next: NextFunction) => orderController.getOrders(req, res, next)
+router.get('/orders', verifyToken,(req: Request, res: Response, next: NextFunction) => orderController.getOrders(req, res, next)
 );
 
 export = router;

@@ -1,10 +1,18 @@
-import { Request, Response, NextFunction } from 'express';
-import { Order } from '../infrastructure/mongodb/models/order';
-import { body, validationResult } from 'express-validator';
+import { AuthRequest } from "../middleware/auth";
+import { Request, Response, NextFunction } from "express";
+import axios from "axios";
+import { config } from "../config/config";
+import { body, validationResult } from "express-validator";
+
+interface OrderQueryParams {
+    user?: string;
+    status?: string;
+}
 
 export class OrderController {
-    // Create an order
-    public async createOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+    private readonly breweryApiUrl = config.breweryApiUrl;
+
+    public async createOrder(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             res.status(400).json({ errors: errors.array() });
@@ -12,30 +20,32 @@ export class OrderController {
         }
 
         try {
-            const order = new Order(req.body);
-            await order.save();
-            res.status(201).json({ message: 'Order created successfully', orderId: order._id });
-        } catch (error) {
-            console.error('Error creating order:', error);
-            res.status(500).json({ message: 'Error creating order' });
+            const response = await axios.post(`${this.breweryApiUrl}/api/order`, {
+                ...req.body,
+                user: req.user?.id || req.user?.email,
+            }, {
+                headers: { Authorization: req.headers.authorization }
+            });
+            res.status(201).json(response.data);
+        } catch (error: any) {
+            console.error("Error creating order:", error.response?.data || error.message);
+            res.status(error.response?.status || 500).json({ message: error.response?.data?.message || "Error creating order" });
         }
     }
-    // Get a specific order by ID
-    public async getOrderById(req: Request, res: Response, next: NextFunction): Promise<void> {
+
+    public async getOrderById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
         try {
-            const order = await Order.findById(req.params.id);
-            if (order) {
-                res.status(200).json(order);
-            } else {
-                res.status(404).json({ message: 'Order not found' });
-            }
-        } catch (error) {
-            console.error('Error fetching order:', error);
-            res.status(500).json({ message: 'Error fetching order' });
+            const response = await axios.get(`${this.breweryApiUrl}/api/order/${req.params.id}`, {
+                headers: { Authorization: req.headers.authorization }
+            });
+            res.status(200).json(response.data);
+        } catch (error: any) {
+            console.error("Error fetching order:", error.response?.data || error.message);
+            res.status(error.response?.status || 404).json({ message: error.response?.data?.message || "Order not found" });
         }
     }
-    // Update an order's status or details
-    public async updateOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+
+    public async updateOrder(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             res.status(400).json({ errors: errors.array() });
@@ -43,43 +53,42 @@ export class OrderController {
         }
 
         try {
-            const order = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-            if (order) {
-                res.status(200).json(order);
-            } else {
-                res.status(404).json({ message: 'Order not found' });
-            }
-        } catch (error) {
-            console.error('Error updating order:', error);
-            res.status(500).json({ message: 'Error updating order' });
+            const response = await axios.put(`${this.breweryApiUrl}/api/order/${req.params.id}`, req.body, {
+                headers: { Authorization: req.headers.authorization }
+            });
+            res.status(200).json(response.data);
+        } catch (error: any) {
+            console.error("Error updating order:", error.response?.data || error.message);
+            res.status(error.response?.status || 404).json({ message: error.response?.data?.message || "Order not found" });
         }
     }
-    // Delete an order (cancel order)
-    public async cancelOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
-            const order = await Order.findByIdAndUpdate(req.params.id, { status: 'Cancelled' }, { new: true });
-            if (order) {
-                res.status(200).json({ message: 'Order cancelled successfully', order: order });
-            } else {
-                res.status(404).json({ message: 'Order not found' });
-            }
-        } catch (error) {
-            console.error('Error cancelling order:', error);
-            res.status(500).json({ message: 'Error cancelling order' });
-        }
-    }
-    // Get all orders with optional filtering by user or status
-    public async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
-            const query: any = {};
-            if (req.query.user) query.user = req.query.user;
-            if (req.query.status) query.status = req.query.status;
 
-            const orders = await Order.find(query);
-            res.status(200).json(orders);
-        } catch (error) {
-            console.error('Error fetching orders:', error);
-            res.status(500).json({ message: 'Error fetching orders' });
+    public async cancelOrder(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const response = await axios.delete(`${this.breweryApiUrl}/api/order/${req.params.id}`, {
+                headers: { Authorization: req.headers.authorization }
+            });
+            res.status(200).json(response.data);
+        } catch (error: any) {
+            console.error("Error cancelling order:", error.response?.data || error.message);
+            res.status(error.response?.status || 404).json({ message: error.response?.data?.message || "Order not found" });
+        }
+    }
+
+    public async getOrders(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const params: OrderQueryParams = {};
+            if (req.query.user) params.user = req.query.user as string;
+            if (req.query.status) params.status = req.query.status as string;
+
+            const response = await axios.get(`${this.breweryApiUrl}/api/order`, {
+                params,
+                headers: { Authorization: req.headers.authorization }
+            });
+            res.status(200).json(response.data);
+        } catch (error: any) {
+            console.error("Error fetching orders:", error.response?.data || error.message);
+            res.status(error.response?.status || 500).json({ message: error.response?.data?.message || "Error fetching orders" });
         }
     }
 }

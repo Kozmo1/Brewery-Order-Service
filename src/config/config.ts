@@ -1,27 +1,26 @@
 import dotenv from "dotenv-safe";
 
 // Load environment variables from .env file based on NODE_ENV or default to .env.local
-dotenv.config({ 
-    allowEmptyValues: true, 
-    path: `.env.${process.env.NODE_ENV || "local"}`, // Load .env.local if NODE_ENV is not set
-    example: '.env.example' // Specify the example file explicitly
+dotenv.config({
+    allowEmptyValues: true,
+    path: `.env.${process.env.NODE_ENV || "local"}`,
+    example: ".env.example",
 });
 
 // Set the environment to development if not specified
 const ENVIRONMENT = process.env.NODE_ENV ?? "development";
 
-// MongoDB configuration from environment variables
-const MONGO_HOST = process.env.MONGO_HOST ?? "";
-const MONGO_DATABASE = process.env.MONGO_DATABASE ?? "";
-const MONGO_PORT = process.env.MONGO_PORT ?? "";
-const MONGO_PASSWORD = process.env.MONGO_PASSWORD ?? ""; 
+// Set the Brewery_DB_Service API URL
+const BREWERY_API_URL = process.env.BREWERY_API_URL ?? "http://localhost:5089";
 
-// Create the MongoDB URL. Note: You might want to handle the password here if needed
-const MONGO_URL = `mongodb://${MONGO_HOST}:${MONGO_PORT}/${MONGO_DATABASE}`;
+export interface Config {
+    environment: string;
+    breweryApiUrl: string;
+    jwtSecret?: string;
+}
 
-export const config = { // Export the configuration object
+export const config: Config = {
     environment: ENVIRONMENT,
-    mongo: {
-        url: MONGO_URL
-    }
+    breweryApiUrl: BREWERY_API_URL,
+    jwtSecret: process.env.JWT_SECRET,
 };

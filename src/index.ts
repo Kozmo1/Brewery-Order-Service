@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv-safe';
 import orderRoutes from './ports/rest/routes/order';
-import {ConnectToDb} from './infrastructure/mongodb/connection';
 
 const app = express();
 
@@ -18,7 +17,6 @@ dotenv.config({
 });
 
 const port = process.env.PORT || 3002;
-ConnectToDb();
 app.use("/healthcheck", (req, res) => {
     res.status(200).send("We have Orders working");
 });

@@ -1,42 +1,64 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { body } from 'express-validator';
 import { OrderController } from '../../../controllers/orderController';
-import { verifyToken } from '../../../middleware/auth';
+import { verifyToken, AuthRequest } from '../../../middleware/auth';
 
 const router = express.Router();
 const orderController = new OrderController();
 
 // Create an order
-router.post('/orders',
+router.post(
+    '/create',
     verifyToken,
-    body('items').isArray().withMessage('Items must be an array').custom(items => {
-        if (items.length === 0) throw new Error('Order must have at least one item');
-        return true;
-    }),
-    body('items.*.product').notEmpty().withMessage('Product ID is required for each item'),
-    body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be a positive integer'),
-    body('items.*.priceAtOrder').isFloat({ min: 0 }).withMessage('Price must be a non-negative number'),
-    body('totalPrice').isFloat({ min: 0 }).withMessage('Total price must be a non-negative number'),
-    body('shippingAddress').isObject().withMessage('Shipping address must be an object'),
-    (req: Request, res: Response, next: NextFunction) => orderController.createOrder(req, res, next)
+    body('user_id')
+        .isInt({ min: 1 })
+        .withMessage('User ID must be a positive integer'),
+    body('items')
+        .isArray({ min: 1 })
+        .withMessage('Items must be a non-empty array'),
+    body('items.*.product_id')
+        .isInt({ min: 1 })
+        .withMessage('Product ID must be a positive integer'),
+    body('items.*.quantity')
+        .isInt({ min: 1 })
+        .withMessage('Quantity must be at least 1'),
+    (req: AuthRequest, res: Response, next: NextFunction) =>
+        orderController.createOrder(req, res, next),
 );
 
-
 // Get a specific order by ID
-router.get('/orders/:id', verifyToken, (req: Request, res: Response, next: NextFunction) => orderController.getOrderById(req, res, next)
+router.get(
+    '/:id',
+    verifyToken,
+    (req: AuthRequest, res: Response, next: NextFunction) =>
+        orderController.getOrderById(req, res, next),
 );
 
 // Update an order's status or details
-router.put('/orders/:id', verifyToken, body('status').optional().isIn(['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']).withMessage('Invalid status'),
-    (req: Request, res: Response, next: NextFunction) => orderController.updateOrder(req, res, next)
+router.put(
+    '/:id/status',
+    verifyToken,
+    body('status')
+        .isIn(['Pending', 'Processing', 'Shipped', 'Delivered'])
+        .withMessage('Invalid status'),
+    (req: AuthRequest, res: Response, next: NextFunction) =>
+        orderController.updateOrderStatus(req, res, next),
 );
 
 // Delete an order (cancel order)
-router.delete('/orders/:id', verifyToken, (req: Request, res: Response, next: NextFunction) => orderController.cancelOrder(req, res, next)
+router.delete(
+    '/orders/:id',
+    verifyToken,
+    (req: Request, res: Response, next: NextFunction) =>
+        orderController.cancelOrder(req, res, next),
 );
 
-// Get all orders with optional filtering by user or status
-router.get('/orders', verifyToken,(req: Request, res: Response, next: NextFunction) => orderController.getOrders(req, res, next)
+// get user orders
+router.get(
+    '/user/:user_id',
+    verifyToken,
+    (req: AuthRequest, res: Response, next: NextFunction) =>
+        orderController.getOrdersByUser(req, res, next),
 );
 
 export = router;

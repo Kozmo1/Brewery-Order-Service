@@ -4,13 +4,22 @@ import axios from 'axios';
 import { config } from '../config/config';
 import { body, validationResult } from 'express-validator';
 
-interface OrderQueryParams {
-    user?: string;
-    status?: string;
+interface InventoryData {
+    StockQuantity: number;
+    Name: string;
+    Price: number;
+}
+
+interface CartItemResponse {
+    Id: number;
+    UserId: number;
+    InventoryId: number;
+    Quantity: number;
 }
 
 export class OrderController {
-    private readonly breweryApiUrl = config.breweryApiUrl;
+    private readonly breweryApiUrl =
+        config.breweryApiUrl || 'http://localhost:5089';
 
     async createOrder(
         req: AuthRequest,
@@ -23,68 +32,91 @@ export class OrderController {
             return;
         }
 
-        const { user_id, items } = req.body;
-        if (req.user?.id !== user_id.toString()) {
+        const { user_id } = req.body;
+        if (req.user?.id !== user_id) {
             res.status(403).json({ message: 'Unauthorized' });
             return;
         }
 
+        const headers = { Authorization: req.headers.authorization };
+
         try {
-            // Check stock availability with Inventory Service
-            for (const item of items) {
-                const inventoryResponse = await axios.get<{
-                    stockQuantity: number;
-                }>(`${this.breweryApiUrl}/api/inventory/${item.product_id}`);
-                if (inventoryResponse.data.stockQuantity < item.quantity) {
-                    res.status(400).json({
-                        message: `Insufficient stock for product ${item.product_id}`,
-                    });
-                    return;
-                }
+            const cartResponse = await axios.get<CartItemResponse[]>(
+                `${this.breweryApiUrl}/api/cart/${user_id}`,
+                { headers },
+            );
+            const cartItems = cartResponse.data.map(
+                (item: CartItemResponse) => ({
+                    userId: item.UserId,
+                    inventoryId: item.InventoryId,
+                    quantity: item.Quantity,
+                }),
+            );
+            if (!cartItems.length) {
+                res.status(400).json({ message: 'Cart is empty' });
+                return;
             }
 
-            // Create order
-            const orderResponse = await axios.post<{
-                id: string;
-                totalPrice: number;
-            }>(`${this.breweryApiUrl}/api/order`, req.body);
+            console.log('Cart items:', JSON.stringify(cartItems, null, 2));
 
-            // Update stock
-            for (const item of items) {
-                await axios.put(
-                    `${this.breweryApiUrl}/api/inventory/${item.product_id}/stock`,
-                    {
-                        quantity: -item.quantity,
+            const enrichedItems = await Promise.all(
+                cartItems.map(
+                    async (item: { inventoryId: number; quantity: number }) => {
+                        const inventoryResponse = await axios.get(
+                            `${this.breweryApiUrl}/api/inventory/${item.inventoryId}`,
+                            { headers },
+                        );
+                        const inventoryData =
+                            inventoryResponse.data as InventoryData;
+                        console.log(
+                            'Inventory data for item',
+                            item.inventoryId,
+                            ':',
+                            JSON.stringify(inventoryData, null, 2),
+                        );
+                        if (inventoryData.StockQuantity < item.quantity) {
+                            throw new Error(
+                                `Insufficient stock for product ${item.inventoryId}`,
+                            );
+                        }
+                        return {
+                            ProductId: item.inventoryId,
+                            Quantity: item.quantity,
+                            ProductName: inventoryData.Name,
+                            PriceAtOrder: inventoryData.Price,
+                        };
                     },
+                ),
+            );
+
+            const orderPayload = { UserId: user_id, Items: enrichedItems };
+            console.log(
+                'Order payload:',
+                JSON.stringify(orderPayload, null, 2),
+            );
+
+            const orderResponse = await axios.post(
+                `${this.breweryApiUrl}/api/order`,
+                orderPayload,
+                { headers },
+            );
+
+            for (const item of enrichedItems) {
+                await axios.put(
+                    `${this.breweryApiUrl}/api/inventory/${item.ProductId}/stock`,
+                    { quantity: -item.Quantity },
+                    { headers },
                 );
             }
 
-            // Trigger payment
-            const paymentResponse = await axios.post(
-                `${this.breweryApiUrl.replace('5089', '3003')}/payment/process`,
-                {
-                    orderId: orderResponse.data.id,
-                    amount: orderResponse.data.totalPrice,
-                },
-            );
-
-            // Trigger shipping
-            await axios.post(
-                `${this.breweryApiUrl.replace('5089', '3010')}/shipping/create`,
-                {
-                    user_id,
-                    order_id: orderResponse.data.id,
-                    address: req.body.address,
-                    city: req.body.city,
-                    country: req.body.country,
-                    postal_code: req.body.postal_code,
-                },
+            await axios.delete(
+                `${this.breweryApiUrl}/api/cart/clear/${user_id}`,
+                { headers },
             );
 
             res.status(201).json({
                 message: 'Order created successfully',
                 order: orderResponse.data,
-                payment: paymentResponse.data,
             });
         } catch (error: any) {
             console.error(
@@ -108,8 +140,15 @@ export class OrderController {
             const response = await axios.get(
                 `${this.breweryApiUrl}/api/order/${req.params.id}`,
             );
-            const orderData = response.data as { user_id: string };
-            if (req.user?.id !== orderData.user_id.toString()) {
+            console.log(
+                'Order response:',
+                JSON.stringify(response.data, null, 2),
+            );
+            console.log('Authenticated user ID:', req.user?.id);
+            const orderData = response.data as { UserId: number }; // Use UserId (match C# casing)
+            console.log('Order UserId:', orderData.UserId);
+            if (req.user?.id !== orderData.UserId) {
+                // Compare with UserId
                 res.status(403).json({ message: 'Unauthorized' });
                 return;
             }
@@ -138,27 +177,21 @@ export class OrderController {
         }
 
         try {
-            const orderResponse = await axios.get<{ user_id: string }>(
+            const orderResponse = await axios.get<{ UserId: number }>(
                 `${this.breweryApiUrl}/api/order/${req.params.id}`,
             );
-            const orderData = orderResponse.data as { user_id: string };
-            if (req.user?.id !== orderData.user_id.toString()) {
+            const orderData = orderResponse.data;
+            if (req.user?.id !== orderData.UserId) {
                 res.status(403).json({ message: 'Unauthorized' });
                 return;
             }
+            // Transform the body to match C# service's expected casing
+            const updateBody = {
+                Status: req.body.status,
+            };
             const response = await axios.put(
                 `${this.breweryApiUrl}/api/order/${req.params.id}/status`,
-                req.body,
-            );
-
-            // Notify user of status update
-            await axios.post(
-                `${this.breweryApiUrl.replace('5089', '3005')}/notifications/order-status`,
-                {
-                    user_id: orderResponse.data.user_id,
-                    order_id: req.params.id,
-                    status: req.body.status,
-                },
+                updateBody,
             );
 
             res.status(200).json({
@@ -209,7 +242,7 @@ export class OrderController {
         next: NextFunction,
     ): Promise<void> {
         try {
-            if (req.user?.id !== req.params.user_id) {
+            if (req.user?.id !== Number(req.params.user_id)) {
                 res.status(403).json({ message: 'Unauthorized' });
                 return;
             }

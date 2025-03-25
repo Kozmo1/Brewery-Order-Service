@@ -10,7 +10,7 @@
     "start": "node dist/index.js",
     "preserve": "npm run build",
     "serve": "cross-env NODE_ENV=local concurrently \"npx tsc -w\"  \"nodemon dist/index.js\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest --coverage"
   },
   "repository": {
     "type": "git",
@@ -38,13 +38,16 @@
     "@types/cors": "^2.8.17",
     "@types/dotenv-safe": "^8.1.6",
     "@types/express": "^5.0.0",
+    "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.13.4",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
+    "jest": "^29.7.0",
     "nodemon": "^3.1.9",
     "prettier": "3.5.2",
     "rimraf": "^6.0.1",
+    "ts-jest": "^29.3.0",
     "ts-node": "^10.9.2"
   }
 }

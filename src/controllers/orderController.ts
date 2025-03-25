@@ -4,6 +4,7 @@ import axios from 'axios';
 import { config } from '../config/config';
 import { body, validationResult } from 'express-validator';
 
+// Alright, setting up some interfaces to keep our data nice and tidy
 interface InventoryData {
     StockQuantity: number;
     Name: string;
@@ -18,6 +19,7 @@ interface CartItemResponse {
 }
 
 export class OrderController {
+    // grabbing the brewery api url from config
     private readonly breweryApiUrl =
         config.breweryApiUrl || 'http://localhost:5089';
 
@@ -26,6 +28,7 @@ export class OrderController {
         res: Response,
         next: NextFunction,
     ): Promise<void> {
+        // First up, checking if the request has any validation issues
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             res.status(400).json({ errors: errors.array() });
@@ -37,10 +40,11 @@ export class OrderController {
             res.status(403).json({ message: 'Unauthorized' });
             return;
         }
-
+        // Setting up headers with the auth token
         const headers = { Authorization: req.headers.authorization };
 
         try {
+            // Grabbing the user’s cart items from the Cart API
             const cartResponse = await axios.get<CartItemResponse[]>(
                 `${this.breweryApiUrl}/api/cart/${user_id}`,
                 { headers },
@@ -52,13 +56,15 @@ export class OrderController {
                     quantity: item.Quantity,
                 }),
             );
+            // If the cart’s empty, no point in going further
             if (!cartItems.length) {
                 res.status(400).json({ message: 'Cart is empty' });
                 return;
             }
-
+            // loggin the cart items for debugging
             console.log('Cart items:', JSON.stringify(cartItems, null, 2));
 
+            // Now, enriching cart items with inventory data
             const enrichedItems = await Promise.all(
                 cartItems.map(
                     async (item: { inventoryId: number; quantity: number }) => {
@@ -68,12 +74,14 @@ export class OrderController {
                         );
                         const inventoryData =
                             inventoryResponse.data as InventoryData;
+                        // Loggin inventory data for debugging
                         console.log(
                             'Inventory data for item',
                             item.inventoryId,
                             ':',
                             JSON.stringify(inventoryData, null, 2),
                         );
+                        // Checking stock
                         if (inventoryData.StockQuantity < item.quantity) {
                             throw new Error(
                                 `Insufficient stock for product ${item.inventoryId}`,
@@ -89,18 +97,20 @@ export class OrderController {
                 ),
             );
 
+            // Building the order payload
             const orderPayload = { UserId: user_id, Items: enrichedItems };
             console.log(
                 'Order payload:',
                 JSON.stringify(orderPayload, null, 2),
             );
 
+            // Sending the order to the database service
             const orderResponse = await axios.post(
                 `${this.breweryApiUrl}/api/order`,
                 orderPayload,
                 { headers },
             );
-
+            // Updating inventory
             for (const item of enrichedItems) {
                 await axios.put(
                     `${this.breweryApiUrl}/api/inventory/${item.ProductId}/stock`,
@@ -108,7 +118,7 @@ export class OrderController {
                     { headers },
                 );
             }
-
+            // Clearing the cart
             await axios.delete(
                 `${this.breweryApiUrl}/api/cart/clear/${user_id}`,
                 { headers },
@@ -130,13 +140,14 @@ export class OrderController {
             });
         }
     }
-
+    // This method grabs an order by its ID
     async getOrderById(
         req: AuthRequest,
         res: Response,
         next: NextFunction,
     ): Promise<void> {
         try {
+            // calling database service to get the order
             const response = await axios.get(
                 `${this.breweryApiUrl}/api/order/${req.params.id}`,
             );
